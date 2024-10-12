@@ -1,0 +1,443 @@
+-- Ensure the LPH-related functions are properly defined if not already
+if not LPHOBFUSCATED then
+    getfenv().LPH_NO_VIRTUALIZE = function(func) return func end
+    getfenv().LPH_JIT_MAX = function(func) return func end
+end
+
+LPH_JIT_MAX(function()
+    local Hooks, Targets, Whitelisted = {}, {}, {
+        {655, 775, 724, 633, 891},
+        {760, 760, 771, 665, 898},
+        {660, 759, 751, 863, 771},
+    }
+
+    -- Function to compare the equality of two tables
+    local function AreTablesEqual(a, b)
+        if #a ~= #b then return false end
+        for i, v in ipairs(a) do
+            if b[i] ~= v then return false end
+        end
+        return true
+    end
+
+    LPH_NO_VIRTUALIZE(function()
+        -- Scan garbage collected objects for target functions and metatables
+        for _, obj in ipairs(getgc(true)) do
+            if type(obj) == "function" then
+                local scriptSource, lineNumber = debug.info(obj, "sl")
+                if scriptSource:find("PlayerModule.LocalScript") and table.find({42, 51, 61}, lineNumber) then
+                    table.insert(Targets, obj)
+                end
+            elseif type(obj) == "table" and rawlen(obj) == 19 and getrawmetatable(obj) then
+                Targets.call = rawget(getrawmetatable(obj), "__call")
+            end
+        end
+    end)()
+
+    -- Validate that all necessary targets are found
+    if not (Targets[1] and Targets[2] and Targets[3] and Targets.call) then
+        warn("Bypass initialization failed")
+        return
+    end
+
+    local scriptIdentifier = debug.info(Targets[1], "s")
+
+    -- Hook the debug.info function to return the spoofed script path
+    Hooks.debug_info = hookfunction(debug.info, LPH_NO_VIRTUALIZE(function(...)
+        local args = {...}
+        if not checkcaller() and AreTablesEqual(args, {2, "s"}) then
+            return scriptIdentifier
+        end
+        return Hooks.debug_info(...)
+    end))
+
+    -- Neutralize the identified functions by hooking them to empty functions
+    for i = 1, 3 do
+        hookfunction(Targets[i], LPH_NO_VIRTUALIZE(function() end))
+    end
+
+    -- Hook the call metamethod to allow only whitelisted calls
+    Hooks.call = hookfunction(Targets.call, LPH_NO_VIRTUALIZE(function(self, ...)
+        local callArgs = {...}
+        for _, whitelist in ipairs(Whitelisted) do
+            if AreTablesEqual(whitelist, callArgs) then
+                return Hooks.call(self, ...)
+            end
+        end
+    end))
+
+    task.wait(3)
+end)()
+
+local yonath = loadstring(game:HttpGet("https://raw.githubusercontent.com/ydntsdfprnartytva/sourcead/refs/heads/main/sourcea"))()
+
+local tabCatching = yonath:CreateTab("Catching")
+local secMagnets = tabCatching:CreateSection("Custom Magnets")
+
+local magnetsEnabled = false
+local hitboxSize = 25
+
+local function resizePart(part)
+    if magnetsEnabled and part:IsA("BasePart") and (part.Name == "Football" or part.Name == "FootballBasePart") then
+        part.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+    end
+end
+
+Workspace.ChildAdded:Connect(function(child)
+    resizePart(child)
+end)
+
+secMagnets:CreateToggle("Enable Magnets", function(state)
+    magnetsEnabled = state
+    print("Magnets Enabled:", magnetsEnabled)
+    
+    if not magnetsEnabled then
+        for _, child in pairs(Workspace:GetChildren()) do
+            if child:IsA("BasePart") and (child.Name == "Football" or child.Name == "FootballBasePart") then
+                child.Size = Vector3.new(1, 1, 1)
+            end
+        end
+    end
+end)
+
+secMagnets:CreateSlider("Custom Range", 1, 25, hitboxSize, false, function(value)
+    hitboxSize = value
+    print("Magnet Range (Hitbox Size): " .. hitboxSize)
+
+    if magnetsEnabled then
+        for _, child in pairs(Workspace:GetChildren()) do
+            resizePart(child)
+        end
+    end
+end)
+
+local tabPlayer = yonath:CreateTab("Player")
+
+local secJumpPower = tabPlayer:CreateSection("Custom JumpPower")
+local originalJumpPower = 50
+local jumpPowerEnabled = false
+
+secJumpPower:CreateToggle("Enable Jp", function(state)
+    jumpPowerEnabled = state
+    local player = game.Players.LocalPlayer
+    local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+    
+    if humanoid then
+        if jumpPowerEnabled then
+            humanoid.JumpPower = originalJumpPower
+            print("JumpPower Enabled:", jumpPowerEnabled)
+        else
+            humanoid.JumpPower = 50
+            print("JumpPower Disabled. Reset to 50")
+        end
+    end
+end)
+
+secJumpPower:CreateSlider("Custom Jp", 50, 60, originalJumpPower, false, function(value)
+    local player = game.Players.LocalPlayer
+    local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+    
+    if humanoid then
+        originalJumpPower = value
+    end
+    
+    spawn(function()
+        while wait(1) do
+            if humanoid and jumpPowerEnabled then
+                humanoid.JumpPower = originalJumpPower
+                print("Enforcing JumpPower: " .. originalJumpPower)
+            else
+                break
+            end
+        end
+    end)
+end)
+
+local tabVisuals = yonath:CreateTab("Visuals")
+
+local secBallPredictions = tabVisuals:CreateSection("Ball Predictions")
+
+local eventConnection
+local ballLandingPredictionEnabled = false 
+
+secBallPredictions:CreateToggle("Ball Prediction", function(isEnabled)
+    local predictionColor = Color3.fromRGB(255, 255, 255)
+
+    local function beamProjectile(g, v0, x0, t1)
+        local c = 0.5 * 0.5 * 0.5
+        local p3 = 0.5 * g * t1 * t1 + v0 * t1 + x0
+        local p2 = p3 - (g * t1 * t1 + v0 * t1) / 3
+        local p1 = (c * g * t1 * t1 + 0.5 * v0 * t1 + x0 - c * (x0 + p3)) / (3 * c) - p2
+
+        local curve0 = (p1 - x0).magnitude
+        local curve1 = (p2 - p3).magnitude
+
+        local b = (x0 - p3).unit
+        local r1 = (p1 - x0).unit
+        local u1 = r1:Cross(b).unit
+        local r2 = (p2 - p3).unit
+        local u2 = r2:Cross(b).unit
+        b = u1:Cross(r1).unit
+
+        local cf1 = CFrame.new(
+            x0.x, x0.y, x0.z,
+            r1.x, u1.x, b.x,
+            r1.y, u1.y, b.y,
+            r1.z, u1.z, b.z
+        )
+
+        local cf2 = CFrame.new(
+            p3.x, p3.y, p3.z,
+            r2.x, u2.x, b.x,
+            r2.y, u2.y, b.y,
+            r2.z, u2.z, b.z
+        )
+
+        return curve0, -curve1, cf1, cf2
+    end
+
+    local function startPrediction()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local RunService = game:GetService("RunService")
+
+        local function onBallAdded(b)
+            if b.Name == "Football" and b:IsA("BasePart") then
+                task.wait()
+                local vel = b.Velocity
+                local pos = b.Position
+                local c0, c1, cf1, cf2 = beamProjectile(Vector3.new(0, -28, 0), vel, pos, 10)
+                local beam = Instance.new("Beam")
+                local a0 = Instance.new("Attachment")
+                local a1 = Instance.new("Attachment")
+                beam.Color = ColorSequence.new(predictionColor)
+                beam.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 1),
+                    NumberSequenceKeypoint.new(0.01, 0),
+                    NumberSequenceKeypoint.new(1, 0),
+                    NumberSequenceKeypoint.new(1, 0.01),
+                })
+                beam.CurveSize0 = c0
+                beam.CurveSize1 = c1
+                beam.Name = "Hitbox"
+                beam.Parent = workspace.Terrain
+                beam.Segments = 1750
+                a0.Parent = workspace.Terrain
+                a1.Parent = workspace.Terrain
+                a0.CFrame = a0.Parent.CFrame:Inverse() * cf1
+                a1.CFrame = a1.Parent.CFrame:Inverse() * cf2
+                beam.Attachment0 = a0
+                beam.Attachment1 = a1
+                beam.Width0 = 1
+                beam.Width1 = 1
+
+                local landedConnection
+                landedConnection = RunService.Heartbeat:Connect(function()
+                    if b.Velocity.magnitude < 1 then  
+                        beam:Destroy()
+                        a0:Destroy()
+                        a1:Destroy()
+                        landedConnection:Disconnect()
+                    end
+                end)
+
+                repeat task.wait() until b.Parent ~= workspace
+                beam:Destroy()
+                a0:Destroy()
+                a1:Destroy()
+            end
+        end
+
+        eventConnection = workspace.ChildAdded:Connect(onBallAdded)
+    end
+
+    local function stopPrediction()
+        if eventConnection then
+            eventConnection:Disconnect()
+            eventConnection = nil
+        end
+        for _, v in pairs(workspace:GetChildren()) do
+            if v:IsA("Beam") and v.Name == "Hitbox" then
+                v:Destroy()
+            end
+        end
+    end
+
+    if isEnabled then
+        if not ballLandingPredictionEnabled then
+            ballLandingPredictionEnabled = true
+            startPrediction()
+        end
+    else
+        if ballLandingPredictionEnabled then
+            ballLandingPredictionEnabled = false
+            stopPrediction()
+        end
+    end
+end)
+
+local tab1 = yonath:CreateTab("Misc")
+
+local sec1 = tab1:CreateSection("Misc Stuff")
+
+sec1:CreateToggle("Enable Daytime", function(isEnabled)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
+    local Lighting = game:GetService("Lighting")
+
+    local originalTime = Lighting.TimeOfDay
+
+    local function setDayTimeForPlayer()
+        Lighting.TimeOfDay = "12:00:00"
+        Lighting.Brightness = 2
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.FogEnd = 100000
+    end
+
+    local function resetTimeForPlayer()
+        Lighting.TimeOfDay = originalTime
+        Lighting.Brightness = 1
+        Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+        Lighting.FogEnd = 10000
+    end
+
+    if isEnabled then
+        setDayTimeForPlayer()
+    else
+        resetTimeForPlayer()
+    end
+end)
+
+sec1:CreateToggle("FPS Booster", function(isEnabled)
+    local decalsyeeted = true
+    local g = game
+    local w = g.Workspace
+    local l = g.Lighting
+    local t = w.Terrain
+
+    local originalSettings = {}
+
+    local function applyFpsBooster()
+        sethiddenproperty(l, "Technology", 2)
+        sethiddenproperty(t, "Decoration", false)
+        t.WaterWaveSize = 0
+        t.WaterWaveSpeed = 0
+        t.WaterReflectance = 0
+        t.WaterTransparency = 0
+        l.GlobalShadows = 0
+        l.FogEnd = 9e9
+        l.Brightness = 0
+        settings().Rendering.QualityLevel = "Level01"
+
+        for i, v in pairs(w:GetDescendants()) do
+            if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                originalSettings[v] = {Material = v.Material, Reflectance = v.Reflectance}
+                v.Material = "Plastic"
+                v.Reflectance = 0
+            elseif (v:IsA("Decal") or v:IsA("Texture")) and decalsyeeted then
+                originalSettings[v] = {Transparency = v.Transparency}
+                v.Transparency = 1
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                originalSettings[v] = {Lifetime = v.Lifetime}
+                v.Lifetime = NumberRange.new(0)
+            elseif v:IsA("Explosion") then
+                originalSettings[v] = {BlastPressure = v.BlastPressure, BlastRadius = v.BlastRadius}
+                v.BlastPressure = 1
+                v.BlastRadius = 1
+            elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                originalSettings[v] = {Enabled = v.Enabled}
+                v.Enabled = false
+            elseif v:IsA("MeshPart") and decalsyeeted then
+                originalSettings[v] = {Material = v.Material, Reflectance = v.Reflectance, TextureID = v.TextureID}
+                v.Material = "Plastic"
+                v.Reflectance = 0
+                v.TextureID = 10385902758728957
+            elseif v:IsA("SpecialMesh") and decalsyeeted then
+                originalSettings[v] = {TextureId = v.TextureId}
+                v.TextureId = 0
+            elseif v:IsA("ShirtGraphic") and decalsyeeted then
+                originalSettings[v] = {Graphic = v.Graphic}
+                v.Graphic = 0
+            elseif (v:IsA("Shirt") or v:IsA("Pants")) and decalsyeeted then
+                originalSettings[v] = {Template = v[v.ClassName.."Template"]}
+                v[v.ClassName.."Template"] = 0
+            end
+        end
+
+        for i = 1, #l:GetChildren() do
+            local e = l:GetChildren()[i]
+            if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
+                originalSettings[e] = {Enabled = e.Enabled}
+                e.Enabled = false
+            end
+        end
+
+        w.DescendantAdded:Connect(function(v)
+            wait()
+            if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                v.Material = "Plastic"
+                v.Reflectance = 0
+            elseif (v:IsA("Decal") or v:IsA("Texture")) and decalsyeeted then
+                v.Transparency = 1
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                v.Lifetime = NumberRange.new(0)
+            elseif v:IsA("Explosion") then
+                v.BlastPressure = 1
+                v.BlastRadius = 1
+            elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                v.Enabled = false
+            elseif v:IsA("MeshPart") and decalsyeeted then
+                v.Material = "Plastic"
+                v.Reflectance = 0
+                v.TextureID = 10385902758728957
+            elseif v:IsA("SpecialMesh") and decalsyeeted then
+                v.TextureId = 0
+            elseif v:IsA("ShirtGraphic") and decalsyeeted then
+                v.Graphic = 0
+            elseif (v:IsA("Shirt") or v:IsA("Pants")) and decalsyeeted then
+                v[v.ClassName.."Template"] = 0
+            end
+        end)
+    end
+
+    local function revertFpsBooster()
+        for v, settings in pairs(originalSettings) do
+            if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                v.Material = settings.Material
+                v.Reflectance = settings.Reflectance
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v.Transparency = settings.Transparency
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                v.Lifetime = settings.Lifetime
+            elseif v:IsA("Explosion") then
+                v.BlastPressure = settings.BlastPressure
+                v.BlastRadius = settings.BlastRadius
+            elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                v.Enabled = settings.Enabled
+            elseif v:IsA("MeshPart") then
+                v.Material = settings.Material
+                v.Reflectance = settings.Reflectance
+                v.TextureID = settings.TextureID
+            elseif v:IsA("SpecialMesh") then
+                v.TextureId = settings.TextureId
+            elseif v:IsA("ShirtGraphic") then
+                v.Graphic = settings.Graphic
+            elseif v:IsA("Shirt") or v:IsA("Pants") then
+                v[v.ClassName.."Template"] = settings.Template
+            end
+        end
+        
+        for _, e in pairs(l:GetChildren()) do
+            if originalSettings[e] then
+                e.Enabled = originalSettings[e].Enabled
+            end
+        end
+    end
+
+    if isEnabled then
+        applyFpsBooster()
+    else
+        revertFpsBooster()
+    end
+end)
